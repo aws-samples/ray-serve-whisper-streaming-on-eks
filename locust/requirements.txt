@@ -1,0 +1,6 @@
+gevent-websocket==0.10.1
+jsonpath==0.82.2
+locust==2.22.0
+pydub==0.25.1
+websocket-client==1.7.0
+websockets==12.0
