@@ -1,0 +1,116 @@
+apiVersion: ray.io/v1
+kind: RayService
+metadata:
+  name: whisper-streaming
+  namespace: default
+spec:
+  deploymentUnhealthySecondThreshold: 300
+  rayClusterConfig:
+    enableInTreeAutoscaling: true
+    headGroupSpec:
+      rayStartParams:
+        dashboard-host: 0.0.0.0
+      template:
+        spec:
+          containers:
+          - env:
+            - name: RAY_GRAFANA_IFRAME_HOST
+              value: https://o11y.raycluster.lindarr.people.aws.dev
+            - name: RAY_GRAFANA_HOST
+              value: http://prometheus-grafana.prometheus-system.svc:80
+            - name: RAY_PROMETHEUS_HOST
+              value: http://prometheus-kube-prometheus-prometheus.prometheus-system.svc:9090
+            image: 464616699298.dkr.ecr.ap-northeast-1.amazonaws.com/ray-ml-whisper-streaming@sha256:d82e8c23a1a9ac653a1c715dd0dd18cd968d6c4b31d027574d24c798323ecd95
+            name: ray-head
+            ports:
+            - containerPort: 6379
+              name: gcs
+              protocol: TCP
+            - containerPort: 8265
+              name: dashboard
+              protocol: TCP
+            - containerPort: 10001
+              name: client
+              protocol: TCP
+            - containerPort: 8000
+              name: serve
+              protocol: TCP
+            resources:
+              limits:
+                cpu: "2"
+                memory: 8G
+              requests:
+                cpu: "2"
+                memory: 8G
+            securityContext:
+              capabilities:
+                add:
+                - SYS_PTRACE
+            volumeMounts:
+            - mountPath: /tmp/ray
+              name: ray-logs
+          volumes:
+          - emptyDir: {}
+            name: ray-logs
+    rayVersion: 2.9.2
+    workerGroupSpecs:
+    - groupName: gpu-group
+      maxReplicas: 20
+      minReplicas: 1
+      rayStartParams: {}
+      replicas: 2
+      template:
+        spec:
+          containers:
+          - env:
+            - name: PYANNOTE_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: my-secret
+                  key: password            
+            image: 464616699298.dkr.ecr.ap-northeast-1.amazonaws.com/ray-ml-whisper-streaming@sha256:d82e8c23a1a9ac653a1c715dd0dd18cd968d6c4b31d027574d24c798323ecd95
+            name: ray-worker
+            resources:
+              limits:
+                cpu: 4
+                memory: 16G
+                nvidia.com/gpu: 1
+              requests:
+                cpu: 3
+                memory: 12G
+                nvidia.com/gpu: 1
+          tolerations:
+          - effect: NoSchedule
+            key: ray.io/node-type
+            operator: Equal
+            value: worker
+  serveConfigV2: |
+    applications:
+      - name: whisper_app
+        import_path: src.voice_stream_ai_server:entrypoint
+        runtime_env:
+          working_dir: "https://github.com/lindarr915/VoiceStreamAI/archive/49732a6034c2fe4f6f2dfb0f81ac2c0e1da6e3fe.zip"
+          env_vars: {"PYANNOTE_AUTH_TOKEN": "hf_123"}
+        deployments:
+        - name: TranscriptionServer
+          max_concurrent_queries: 100
+          autoscaling_config:
+            target_num_ongoing_requests_per_replica: 5
+            min_replicas: 1
+            max_replicas: 5
+            initial_replicas: 3
+        - name: FasterWhisperASR
+          max_concurrent_queries: 10
+          autoscaling_config:
+            target_num_ongoing_requests_per_replica: 2
+            min_replicas: 1
+            max_replicas: 20
+            initial_replicas: 3
+        - name: PyannoteVAD
+          max_concurrent_queries: 10
+          autoscaling_config:
+            target_num_ongoing_requests_per_replica: 3
+            min_replicas: 1
+            max_replicas: 20
+            initial_replicas: 3
+  serviceUnhealthySecondThreshold: 900
