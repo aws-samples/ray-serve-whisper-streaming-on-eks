@@ -71,7 +71,7 @@ locals {
   name   = var.name
   region = var.region
 
-  vpc_cidr           = "10.0.0.0/16"
+  vpc_cidr           = "10.12.0.0/16"
   secondary_vpc_cidr = "100.64.0.0/16"
   azs                = slice(data.aws_availability_zones.available.names, 0, 3)
 
@@ -107,7 +107,7 @@ module "eks" {
   manage_aws_auth_configmap = true
   aws_auth_roles = [
     {
-      rolearn  = module.karpenter.role_arn
+      rolearn  = module.eks_blueprints_addons.karpenter.node_iam_role_arn
       username = "system:node:{{EC2PrivateDNSName}}"
       groups = [
         "system:bootstrappers",
@@ -185,24 +185,62 @@ resource "kubectl_manifest" "eni_config" {
   })
 }
 
+
+#---------------------------------------------------------------
+# Operational Add-Ons using EKS Blueprints
+#---------------------------------------------------------------
+module "eks_blueprints_addons" {
+  source  = "aws-ia/eks-blueprints-addons/aws"
+  version = "~> 1.0"
+
+  cluster_name      = module.eks.cluster_name
+  cluster_endpoint  = module.eks.cluster_endpoint
+  cluster_version   = module.eks.cluster_version
+  oidc_provider_arn = module.eks.oidc_provider_arn
+
+  enable_karpenter = true
+  karpenter = {
+    chart_version       = "0.35.0"
+    repository_username = data.aws_ecrpublic_authorization_token.token.user_name
+    repository_password = data.aws_ecrpublic_authorization_token.token.password
+    max_history         = 10
+  }
+  karpenter_node = {
+    create_instance_profile = true
+    iam_role_additional_policies = [
+      "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy",
+      module.karpenter_policy.arn
+    ]
+  }
+
+  helm_releases = {
+    #---------------------------------------
+    # NVIDIA Device Plugin Add-on
+    #---------------------------------------
+    nvidia-device-plugin = {
+      description      = "A Helm chart for NVIDIA Device Plugin"
+      namespace        = "nvidia-device-plugin"
+      create_namespace = true
+      chart            = "nvidia-device-plugin"
+      chart_version    = "0.14.0"
+      repository       = "https://nvidia.github.io/k8s-device-plugin"
+      values           = [file("${path.module}/helm-values/nvidia-values.yaml")]
+    }
+
+    kuberay-operator = {
+      namespace        = "kuberay-operator"
+      create_namespace = true
+      chart            = "kuberay-operator"
+      chart_version    = "1.0.0"
+      repository       = "https://ray-project.github.io/kuberay-helm/"
+    }
+  }
+}
+
+
 #---------------------------------------------------------------
 # Karpenter Infrastructure
 #---------------------------------------------------------------
-
-module "karpenter" {
-  source  = "terraform-aws-modules/eks/aws//modules/karpenter"
-  version = "~> 19.15"
-
-  cluster_name           = module.eks.cluster_name
-  irsa_oidc_provider_arn = module.eks.oidc_provider_arn
-  create_irsa            = false # IRSA will be created by the kubernetes-addons module
-  iam_role_additional_policies = {
-    additional_policy = module.karpenter_policy.arn
-  }
-
-  tags = local.tags
-}
-
 # We have to augment default the karpenter node IAM policy with
 # permissions we need for Ray Jobs to run until IRSA is added
 # upstream in kuberay-operator. See issue
@@ -235,87 +273,153 @@ module "karpenter_policy" {
   )
 }
 
-#---------------------------------------------------------------
-# Operational Add-Ons using EKS Blueprints
-#---------------------------------------------------------------
-
-module "eks_blueprints_addons" {
-  # Users should pin the version to the latest available release
-  # tflint-ignore: terraform_module_pinned_source
-  source = "github.com/aws-ia/terraform-aws-eks-blueprints-addons?ref=08650fd2b4bc894bde7b51313a8dc9598d82e925"
-
-  cluster_name      = module.eks.cluster_name
-  cluster_endpoint  = module.eks.cluster_endpoint
-  cluster_version   = module.eks.cluster_version
-  oidc_provider     = module.eks.oidc_provider
-  oidc_provider_arn = module.eks.oidc_provider_arn
-
-  enable_cloudwatch_metrics = true
-
-  enable_aws_for_fluentbit = true
-  aws_for_fluentbit_helm_config = {
-    aws_for_fluent_bit_cw_log_group           = "/${local.name}/worker-fluentbit-logs"
-    aws_for_fluentbit_cwlog_retention_in_days = 7 #days
-    values = [
-      yamlencode({
-        name              = "kubernetes"
-        match             = "kube.*"
-        kubeURL           = "https://kubernetes.default.svc.cluster.local:443"
-        mergeLog          = "On"
-        mergeLogKey       = "log_processed"
-        keepLog           = "On"
-        k8sLoggingParser  = "On"
-        k8sLoggingExclude = "Off"
-        bufferSize        = "0"
-        hostNetwork       = "true"
-        dnsPolicy         = "ClusterFirstWithHostNet"
-        filter = {
-          extraFilters = <<-EOT
-            Kube_Tag_Prefix     application.var.log.containers.
-            Labels              Off
-            Annotations         Off
-            Use_Kubelet         true
-            Kubelet_Port        10250
-            Kube_CA_File        /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-            Kube_Token_File     /var/run/secrets/kubernetes.io/serviceaccount/token
-          EOT
-        }
-        cloudWatch = {
-          enabled         = "true"
-          match           = "*"
-          region          = local.region
-          logGroupName    = "/${local.name}/worker-fluentbit-logs"
-          logStreamPrefix = "fluentbit-"
-          autoCreateGroup = "false"
-        }
-      })
-    ]
-  }
-
-  enable_karpenter = true
-  karpenter_helm_config = {
-    repository_username = data.aws_ecrpublic_authorization_token.token.user_name
-    repository_password = data.aws_ecrpublic_authorization_token.token.password
-  }
-  karpenter_node_iam_instance_profile        = module.karpenter.instance_profile_name
-  karpenter_enable_spot_termination_handling = true
-
-  tags = local.tags
+resource "kubectl_manifest" "karpenter_controller_security_group_policy" {
+  yaml_body = <<-YAML
+    apiVersion: vpcresources.k8s.aws/v1beta1
+    kind: SecurityGroupPolicy
+    metadata:
+      name: karpenter-controller-sgp
+      namespace: karpenter
+    spec:
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: karpenter
+          eks.amazonaws.com/fargate-profile: karpenter
+      securityGroups:
+        groupIds:
+        - ${module.eks.cluster_primary_security_group_id}
+        - ${module.eks.node_security_group_id}
+  YAML
 }
 
-#---------------------------------------------------------------
-# KubeRay Operator using Helm Release
-#---------------------------------------------------------------
+resource "kubectl_manifest" "karpenter_gpu_node_class" {
+  yaml_body  = <<-YAML
+    apiVersion: karpenter.k8s.aws/v1beta1
+    kind: EC2NodeClass
+    metadata:
+      name: bottlerocket-nvidia
+    spec:
+      amiFamily: Bottlerocket
+      role: ${module.eks_blueprints_addons.karpenter.node_iam_role_name}
+      securityGroupSelectorTerms:
+      - tags:
+          Name: ${local.name}-node
+      subnetSelectorTerms:
+      - tags:
+          karpenter.sh/discovery: ${local.name}
+      tags:
+        karpenter.sh/discovery: ${local.name}
+  YAML
+  depends_on = [module.eks_blueprints_addons]
+}
 
-resource "helm_release" "kuberay_operator" {
-  namespace        = "kuberay-operator"
-  create_namespace = true
-  name             = "kuberay-operator"
-  repository       = "https://ray-project.github.io/kuberay-helm/"
-  chart            = "kuberay-operator"
-  version          = "1.0.0"
+resource "kubectl_manifest" "karpenter_gpu_node_pool" {
+  yaml_body  = <<-YAML
+    apiVersion: karpenter.sh/v1beta1
+    kind: NodePool
+    metadata:
+      name: gpu
+    spec:
+      disruption:
+        consolidateAfter: 600s
+        consolidationPolicy: WhenEmpty
+        expireAfter: 720h
+      limits:
+        cpu: 1k
+        memory: 1000Gi
+        nvidia.com/gpu: 50
+      template:
+        spec:
+          nodeClassRef:
+            name: bottlerocket-nvidia
+          requirements:
+          - key: kubernetes.io/arch
+            operator: In
+            values: ["amd64"]
+          - key: karpenter.k8s.aws/instance-category
+            operator: In
+            values: ["g"]
+          - key: karpenter.k8s.aws/instance-generation
+            operator: Gt
+            values: ["4"]
+          - key: "karpenter.k8s.aws/instance-cpu"
+            operator: In
+            values: ["4", "8", "16"]
+          - key: kubernetes.io/os
+            operator: In
+            values: ["linux"]
+          - key: "karpenter.k8s.aws/instance-hypervisor"
+            operator: In
+            values: ["nitro"]
+          - key: "topology.kubernetes.io/zone"
+            operator: In
+            values: ${jsonencode(local.azs)}
+          - key: karpenter.sh/capacity-type
+            operator: In
+            values: ["on-demand", "spot"]
+  YAML
+  depends_on = [module.eks_blueprints_addons]
+}
 
-  depends_on = [
-    module.eks
-  ]
+
+resource "kubectl_manifest" "karpenter_ec2_node_class" {
+  yaml_body  = <<-YAML
+    apiVersion: karpenter.k8s.aws/v1beta1
+    kind: EC2NodeClass
+    metadata:
+      name: default
+    spec:
+      amiFamily: AL2023
+      role: ${module.eks_blueprints_addons.karpenter.node_iam_role_name}
+      securityGroupSelectorTerms:
+      - tags:
+          Name: ${local.name}-node
+      subnetSelectorTerms:
+      - tags:
+          karpenter.sh/discovery: ${local.name}
+      tags:
+        karpenter.sh/discovery: ${local.name}
+  YAML
+  depends_on = [module.eks_blueprints_addons]
+}
+
+resource "kubectl_manifest" "karpenter_node_pool" {
+  yaml_body  = <<-YAML
+    apiVersion: karpenter.sh/v1beta1
+    kind: NodePool
+    metadata:
+      name: default
+    spec:
+      disruption:
+        consolidationPolicy: WhenUnderutilized
+        expireAfter: 72h0m0s
+      limits:
+        cpu: 1k
+      template:
+        spec:
+          kubelet:
+            maxPods: 110
+          nodeClassRef:
+            name: default
+          requirements:
+          - key: "karpenter.k8s.aws/instance-category"
+            operator: In
+            values: ["c", "m", "r"]
+          - key: "karpenter.k8s.aws/instance-cpu"
+            operator: In
+            values: ["4", "8", "16"]
+          - key: "karpenter.k8s.aws/instance-hypervisor"
+            operator: In
+            values: ["nitro"]
+          - key: "topology.kubernetes.io/zone"
+            operator: In
+            values: ${jsonencode(local.azs)}
+          - key: "kubernetes.io/arch"
+            operator: In
+            values: ["amd64"]
+          - key: "karpenter.sh/capacity-type"
+            operator: In
+            values: ["spot", "on-demand"]
+  YAML
+  depends_on = [module.eks_blueprints_addons]
 }
