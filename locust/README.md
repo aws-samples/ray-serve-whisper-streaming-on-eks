@@ -22,6 +22,6 @@ Then open `http://localhost:8089`
 locust --headless -u 1 -f locustfile.py
 ```
 
-By default, it connects to `ws://localhost:8765`. If you need to connect to a diffferent host, you can either override it within the code or specify the host by providing the `--host` option.
+By default, it connects to `ws://localhost:8000`. If you need to connect to a diffferent host, you can either override it within the code or specify the host by providing the `--host` option.
 For more usage, refer to this [doc](https://docs.locust.io/en/stable/configuration.html).
 

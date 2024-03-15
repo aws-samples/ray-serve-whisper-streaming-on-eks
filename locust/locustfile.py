@@ -28,7 +28,7 @@ class WebSocketUser(User):
 
 
 class WhisperWebSocketUser(WebSocketUser):
-    host = "ws://localhost:8765"
+    host = "ws://localhost:8000"
     # wait_time = between(0.5, 1.5)
 
     def on_start(self):
@@ -41,9 +41,10 @@ class WhisperWebSocketUser(WebSocketUser):
                     pass
                 else:
                     with self.environment.events.request.measure("[Receive]", "Response"):
-                        transcription = json.loads(transcription_str)
-                        logging.info(
-                            f"Received transcription: {transcription['text']}, processing time: {transcription['processing_time']}")
+                        logging.info(f"{transcription_str}")
+                        # transcription = json.loads(transcription_str)
+                        # logging.info(
+                            # f"Received transcription: {transcription['text']}, processing time: {transcription['processing_time']}")
         self.pool.spawn(_receive)
 
     @task

@@ -14,8 +14,6 @@ spec:
         spec:
           containers:
           - env:
-            - name: RAY_GRAFANA_IFRAME_HOST
-              value: https://o11y.raycluster.lindarr.people.aws.dev
             - name: RAY_GRAFANA_HOST
               value: http://prometheus-grafana.prometheus-system.svc:80
             - name: RAY_PROMETHEUS_HOST

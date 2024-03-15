@@ -1,10 +1,10 @@
-## Whisper Streaming with Ray Serve on Amazon EKS
+# Whisper Streaming with Ray Serve on Amazon EKS
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-Whisper Streaming is a Ray Serve-based ASR solution that enables realtime audio streaming and transcription using WebSocket. The system employs Huggingface's Voice Activity Detection (VAD) and OpenAI's Whisper model (faster-whisper being the default) for accurate speech recognition and processing. The soruce is based on VoiceStreamAI https://github.com/lindarr915/VoiceStreamAI.
+Whisper Streaming is a Ray Serve-based ASR solution that enables near-realtime audio streaming and transcription. The system employs Huggingface's Voice Activity Detection (VAD) and OpenAI's Whisper model (faster-whisper being the default) for accurate speech recognition and processing. 
 
-The real-time streaing ASR can be used in the following use cases: 
+The real-time streaming ASR can be used in the following use cases: 
 
 * closed caption
 * dictation, email, messaging
@@ -13,99 +13,138 @@ The real-time streaing ASR can be used in the following use cases:
 * court protocols
 * any sort of online transcription of microphone data
 
-The project is composed of containing multiple ML models (VAD and Whisper model) and buffering logic. Hence, I will introduce the concpet of Ray's [Deploy Compositions of Models](https://docs.ray.io/en/latest/serve/model_composition.html#compose-deployments-using-deploymenthandles) to independently scale and configure each of the ML models and business logic (buffering)
+The project is based on VoiceStreamAI (https://github.com/alesaccoia/VoiceStreamAI). It is composed of containing multiple ML models (VAD and Whisper model) and buffering logic. I will apply the concept of Ray's [Deploy Compositions of Models](https://docs.ray.io/en/latest/serve/model_composition.html#compose-deployments-using-deploymenthandles) to independently scale and configure each of the ML models and business logic.
 
 ## Deployment 
 
-1. Start [Amazon EKS Cluster with GPUs](https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/aws-eks-gpu-cluster.html)
-
-2. Install Karpenter, NodePool and EC2NodeClass for compute provisioning for Kubernetes clusters.
-```
-kubecly apply -f ./karpenter
-```
-3. Install the Helm Chart of [KubeRay](https://github.com/ray-project/kuberay)
+1. In this EKS cluster, Karpenter and KubeRay helm chart, and NodePool and EC2NodeClass custom resource will be deployed. 
 
 ```
-helm repo add kuberay https://ray-project.github.io/kuberay-helm/
-helm repo update
-
-# Install both CRDs and KubeRay operator v1.0.0.
-helm install kuberay-operator kuberay/kuberay-operator --version 1.0.0
-
-# Check the KubeRay operator Pod in `default` namespace
-kubectl get pods
-# NAME                                READY   STATUS    RESTARTS   AGE
-# kuberay-operator-6fcbb94f64-mbfnr   1/1     Running   0          17s
-```
-4. Deploy the KubeRay Service
-```
-kubectl apply -f Whisper-RayService.yaml
+cd infra
+./install.sh
 ```
 
-Check when the 
+2. Edit the `PYANNOTE_AUTH_TOKEN` and provide a Hugging Face token in the environment variable. For best practice, store the token in a Kubernetes secret.
+
 ```
+❯ vi Whisper-RayService.yaml
+
+         ...
+         env_vars: {"PYANNOTE_AUTH_TOKEN": "hf_123"}
+         ...
+
+```
+
+3. Deploy the KubeRay Service.
+```
+❯ kubectl apply -f Whisper-RayService.yaml
+```
+
+3. Check the Ray workers and Ray Serve deployments are ready:
+
+```
+# Check Ray workers are ready
 ❯ kubectl get pod
 NAME                                                      READY   STATUS    RESTARTS       AGE
 isper-streaming-raycluster-c2gdq-worker-gpu-group-6vxz5   1/1     Running   0              84m
 whisper-streaming-raycluster-c2gdq-head-nxt2g             2/2     Running   0              98m
-❯ kubectl get svc
-NAME                                          TYPE           CLUSTER-IP       EXTERNAL-IP                                                                         PORT(S)                                                   AGE
-kubernetes                                    ClusterIP      172.20.0.1       <none>                                                                              443/TCP                                                   92d
-whisper-streaming-head-svc                    ClusterIP      172.20.146.174   <none>                                                                              10001/TCP,8265/TCP,52365/TCP,6379/TCP,8080/TCP,8000/TCP   5d5h
-whisper-streaming-raycluster-c2gdq-head-svc   ClusterIP      172.20.89.123    <none>                                                                              10001/TCP,8265/TCP,52365/TCP,6379/TCP,8080/TCP,8000/TCP   98m
-whisper-streaming-serve-svc                   ClusterIP      172.20.191.110   <none>                                                                              8000/TCP                                                  5d5h
 
+# Check RayService is ready 
 ❯ kubectl describe RayService whisper-streaming
-ame:         whisper-streaming
+Name:         whisper-streaming
 Namespace:    default
-Labels:       <none>
-Annotations:  <none>
 API Version:  ray.io/v1
 Kind:         RayService
-Metadata:
-  Creation Timestamp:  2024-03-01T03:28:51Z
-  Generation:          6
-  Resource Version:    56238399
-  UID:                 c9361d97-66ec-4f64-b7ae-434c6610a60c
 Spec:
   ...
 Status:
-  Active Service Status:
 
 ...
   Service Status:  Running
 
+# Get the service names
+❯ kubectl get svc
+NAME                                          TYPE           CLUSTER-IP       EXTERNAL-IP                                                                         PORT(S)                                                   AGE
+whisper-streaming-head-svc                    ClusterIP      172.20.146.174   <none>                                                                              10001/TCP,8265/TCP,52365/TCP,6379/TCP,8080/TCP,8000/TCP   5d5h
+whisper-streaming-raycluster-c2gdq-head-svc   ClusterIP      172.20.89.123    <none>                                                                              10001/TCP,8265/TCP,52365/TCP,6379/TCP,8080/TCP,8000/TCP   98m
+whisper-streaming-serve-svc                   ClusterIP      172.20.191.110   <none>                                                                              8000/TCP                                                  5d5h
+
+
 ```
 ## Test the Application
 
-https://github.com/lindarr915/VoiceStreamAI/tree/main
+You can access the Ray Dashboard after port-forwarding 8265.
+```
+kubectl port-forward svc/whisper-streaming-head-svc 8265:8265
+open http://localhost:8265 
+```
 
-## Demo Video
+![](img/ray_serve_dashboard.png)
 
-## Demo Web Interface
+The ASR service is exposed as a WebSocket service. You can port-forward the service 8000 and send live audio stream via a browser.
+
+```
+kubectl port-forward svc/whisper-streaming-serve-svc 8000:8000
+open VoiceStreamAI_Client.html
+```
+
+![](img/client_demo.png)
 
 ## Load Testing
 
-Simluate 20 audio streams with Locust using the command:  
+Simulate 20 audio streams with Locust using the command. With Ray Serve Autoscaler, you are able to serve ML models that scales out and in according to the request count automatically.  
 ```
-locust -u 20 --headless  -f locustfile.py    
+❯ locust -u 20 --headless -f locustfile.py
+
+[2024-03-15 12:52:36,101] bcd07456717e/INFO/locust.main: No run time limit set, use CTRL+C to interrupt
+[2024-03-15 12:52:36,101] bcd07456717e/INFO/locust.main: Starting Locust 2.22.0
+Type     Name                                                                          # reqs      # fails |    Avg     Min     Max    Med |   req/s  failures/s
+--------|----------------------------------------------------------------------------|-------|-------------|-------|-------|-------|-------|--------|-----------
+--------|----------------------------------------------------------------------------|-------|-------------|-------|-------|-------|-------|--------|-----------
+         Aggregated                                                                         0     0(0.00%) |      0       0       0      0 |    0.00        0.00
+
+[2024-03-15 12:52:36,101] bcd07456717e/INFO/locust.runners: Ramping to 20 users at a rate of 1.00 per second
+[2024-03-15 12:52:36,228] bcd07456717e/INFO/root: Loading audio file
+[2024-03-15 12:52:36,230] bcd07456717e/INFO/root: Start sending audio
+[2024-03-15 12:52:37,280] bcd07456717e/INFO/root: Loading audio file
+[2024-03-15 12:52:37,281] bcd07456717e/INFO/root: Start sending audio
+Type     Name                                                                          # reqs      # fails |    Avg     Min     Max    Med |   req/s  failures/s
+--------|----------------------------------------------------------------------------|-------|-------------|-------|-------|-------|-------|--------|-----------
+[Send]   Audio trunks                                                                      10     0(0.00%) |    255     252     259    259 |    0.00        0.00
+[Connect]  Websocket                                                                          2     0(0.00%) |    150     125     174    130 |    0.00        0.00
+--------|----------------------------------------------------------------------------|-------|-------------|-------|-------|-------|-------|--------|-----------
+         Aggregated                                                                        12     0(0.00%) |    238     125     259    250 |    0.00        0.00
+
+[2024-03-15 12:52:38,235] bcd07456717e/INFO/root: Loading audio file
+[2024-03-15 12:52:38,236] bcd07456717e/INFO/root: Start sending audio
+[2024-03-15 12:52:39,247] bcd07456717e/INFO/root: Loading audio file
+[2024-03-15 12:52:39,249] bcd07456717e/INFO/root: Start sending audio
+[2024-03-15 12:52:39,830] bcd07456717e/INFO/root: {"language": "en", "language_probability": 0.94970703125, "text": "Good morning, everyone.", "words": [{"word": " Good", "start": 0.0, "end": 0.9, "probability": 0.93701171875}, {"word": " morning,", "start": 0.9, "end": 1.22, "probability": 0.9697265625}, {"word": " everyone.", "start": 1.34, "end": 1.7, "probability": 0.99462890625}], "processing_time": 0.4552152156829834}
+Type     Name                                                                          # reqs      # fails |    Avg     Min     Max    Med |   req/s  failures/s
+--------|----------------------------------------------------------------------------|-------|-------------|-------|-------|-------|-------|--------|-----------
+[Send]   Audio trunks                                                                      36     0(0.00%) |    255     251     264    260 |    4.00        0.00
+[Receive]  Response                                                                           1     0(0.00%) |      0       0       0      0 |    0.00        0.00
+[Connect]  Websocket                                                                          4     0(0.00%) |    142     125     174    130 |    1.00        0.00
+--------|----------------------------------------------------------------------------|-------|-------------|-------|-------|-------|-------|--------|-----------
+         Aggregated                                                                        41     0(0.00%) |    238       0     264    260 |    5.00        0.00
+
+[2024-03-15 12:52:40,238] bcd07456717e/INFO/root: Loading audio file
+[2024-03-15 12:52:40,239] bcd07456717e/INFO/root: Start sending audio
+[2024-03-15 12:52:40,856] bcd07456717e/INFO/root: {"language": "en", "language_probability": 0.94970703125, "text": "Good morning, everyone.", "words": [{"word": " Good", "start": 0.0, "end": 0.9, "probability": 0.93701171875}, {"word": " morning,", "start": 0.9, "end": 1.22, "probability": 0.9697265625}, {"word": " everyone.", "start": 1.34, "end": 1.7, "probability": 0.99462890625}], "processing_time": 0.45716142654418945}
+
 ```
 ## Observability
 
-Grafana 
+Follow the docs - [Using Prometheus and Grafana](https://docs.ray.io/en/latest/cluster/kubernetes/k8s-ecosystem/prometheus-grafana.html) to deploy Prometheus and Grafana to build Dashboard for Ray Cluster.
 
-3 Ray Actors
-- FasterWhisperASR (GPU)
-- PyannoteVAD
-- TranscriptionServer
+![](img/server_deploy_grafana.png)
 
-Scale
+## Area of Improvement
 
-Monitor the Latency 
-
-## Security
-
-See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.
+1. [ASR Core] The ASR is not real time streaming yet. Refer to the [3. Create a Streaming ASR Demo with Transformers](https://www.gradio.app/guides/real-time-speech-recognition) for real time streaming ASR.
+2. [General] The code of testing are not modified / implemented.
+3. [Cold Start] Store ML models on S3 storage instead of download from Internet 
+4. [Cold Start] Pre-load ML container images in the data volume of Bottlerocket OS instead of downloading from ECR each time. 
 
 ## License
 
