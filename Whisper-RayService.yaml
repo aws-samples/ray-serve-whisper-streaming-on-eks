@@ -18,7 +18,7 @@ spec:
               value: http://prometheus-grafana.prometheus-system.svc:80
             - name: RAY_PROMETHEUS_HOST
               value: http://prometheus-kube-prometheus-prometheus.prometheus-system.svc:9090
-            image: 464616699298.dkr.ecr.ap-northeast-1.amazonaws.com/ray-ml-whisper-streaming@sha256:d82e8c23a1a9ac653a1c715dd0dd18cd968d6c4b31d027574d24c798323ecd95
+            image: public.ecr.aws/darrenlin/ray-whisper-streaming:latest
             name: ray-head
             ports:
             - containerPort: 6379
@@ -66,7 +66,7 @@ spec:
                 secretKeyRef:
                   name: my-secret
                   key: password            
-            image: 464616699298.dkr.ecr.ap-northeast-1.amazonaws.com/ray-ml-whisper-streaming@sha256:d82e8c23a1a9ac653a1c715dd0dd18cd968d6c4b31d027574d24c798323ecd95
+            image: public.ecr.aws/darrenlin/ray-whisper-streaming:latest
             name: ray-worker
             resources:
               limits:
