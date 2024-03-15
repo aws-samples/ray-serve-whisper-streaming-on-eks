@@ -141,10 +141,11 @@ Follow the docs - [Using Prometheus and Grafana](https://docs.ray.io/en/latest/c
 
 ## Area of Improvement
 
-1. [ASR Core] The ASR is not real time streaming yet. Refer to the [3. Create a Streaming ASR Demo with Transformers](https://www.gradio.app/guides/real-time-speech-recognition) for real time streaming ASR.
+1. [ASR Core] The latency is high because the audio is segmented by VAD or silence. In other words, the implementation is not real time yet. Refer to the [3. Create a Streaming ASR Demo with Transformers](https://www.gradio.app/guides/real-time-speech-recognition) for real time streaming ASR as future work.
 2. [General] The code of testing are not modified / implemented.
 3. [Cold Start] Store ML models on S3 storage instead of download from Internet 
 4. [Cold Start] Pre-load ML container images in the data volume of Bottlerocket OS instead of downloading from ECR each time. 
+5. [Cost] After ASR streaming is optimized, evaluate the performance and cost  
 
 ## License
 
