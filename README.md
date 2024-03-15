@@ -15,6 +15,10 @@ The real-time streaming ASR can be used in the following use cases:
 
 The project is based on VoiceStreamAI (https://github.com/alesaccoia/VoiceStreamAI). It is composed of containing multiple ML models (VAD and Whisper model) and buffering logic. I will apply the concept of Ray's [Deploy Compositions of Models](https://docs.ray.io/en/latest/serve/model_composition.html#compose-deployments-using-deploymenthandles) to independently scale and configure each of the ML models and business logic.
 
+## Disclaimer 
+
+Ray is intended for use for strict controlled network only. It is strongly recommend that you should avoid expose the Ray Dashboard service or Ray Serve service to the Internet without proper authentication and control.    
+
 ## Deployment 
 
 1. In this EKS cluster, Karpenter and KubeRay helm chart, and NodePool and EC2NodeClass custom resource will be deployed. 
