@@ -1,0 +1,3 @@
+pyannote_auth_token = "hf_xxxxxxxx"
+acm_cert_arn = "arn:aws:acm:region-code:account-id:certificate/xxxxxxxx"
+grafana_host = "grafana.domain.com"

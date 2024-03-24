@@ -16,6 +16,12 @@ variable "eks_cluster_version" {
   type        = string
 }
 
+variable "pyannote_auth_token" {
+  description = "The PYANNOTE_AUTH_TOKEN used for Ray worker, and it's essentially a HuggingFace auth token"
+  type = string
+  sensitive = true
+}
+
 variable "grafana_host" {
   description = "Grafana Dashboard URL"
   default     = "grafana.domain.com"

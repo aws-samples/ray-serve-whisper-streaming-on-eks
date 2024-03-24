@@ -15,9 +15,9 @@ spec:
           containers:
           - env:
             - name: RAY_GRAFANA_HOST
-              value: http://prometheus-grafana.prometheus-system.svc:80
+              value: http://kube-prometheus-stack-grafana.kube-prometheus-stack.svc:80
             - name: RAY_PROMETHEUS_HOST
-              value: http://prometheus-kube-prometheus-prometheus.prometheus-system.svc:9090
+              value: http://kube-prometheus-stack-prometheus.kube-prometheus-stack.svc:9090
             image: public.ecr.aws/darrenlin/ray-whisper-streaming:latest
             name: ray-head
             ports:
@@ -65,7 +65,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: my-secret
-                  key: password            
+                  key: token
             image: public.ecr.aws/darrenlin/ray-whisper-streaming:latest
             name: ray-worker
             resources:
