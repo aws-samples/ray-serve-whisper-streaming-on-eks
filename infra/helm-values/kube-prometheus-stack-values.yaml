@@ -1,0 +1,178 @@
+## Create default rules for monitoring the cluster
+## Disable rules for unreachable components
+##
+defaultRules:
+  create: true
+  rules:
+    etcd: false
+    kubeScheduler: false
+
+## Disable component scraping for the kube controller manager, etcd, and kube-scheduler
+## These components are not reachable on EKS
+##
+kubeControllerManager:
+  enabled: false
+kubeEtcd:
+  enabled: false
+kubeScheduler:
+  enabled: false
+
+prometheus:
+  prometheusSpec:
+    ## Prometheus StorageSpec for persistent data on AWS EBS
+    ## ref: https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/user-guides/storage.md
+    ##
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp3
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 50Gi
+    resources:
+      limits:
+        cpu: 1
+        memory: 2000Mi
+    additionalScrapeConfigs:
+    - job_name: karpenter
+      kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names:
+          - karpenter
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_endpoint_port_name]
+        regex: http-metrics
+        action: keep
+
+
+# nodeExporter:
+#   enabled: true
+# prometheus-node-exporter:
+#   affinity:
+#     nodeAffinity:
+#       requiredDuringSchedulingIgnoredDuringExecution:
+#         nodeSelectorTerms:
+#           - key: eks.amazonaws.com/compute-type
+#             operator: NotIn
+#             values:
+#             - fargate
+
+alertmanager:
+  enabled: false
+  config:
+    global:
+      slack_api_url: your-slack-web-hook-url
+      resolve_timeout: 5m
+    route:
+      group_by: ['alertname']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 12h
+      receiver: 'slack'
+      routes:
+      - match:
+          alertname: Watchdog
+        receiver: 'null'
+      - receiver: 'slack'
+        matchers:
+        - alertname =~ "InfoInhibitor|Watchdog"
+    receivers:
+    - name: 'null'
+    - name: 'slack'
+      slack_configs:
+      - channel: '#webhook-alerts'
+        title: "{{ range .Alerts }}{{ .Annotations.summary }}\n{{ end }}"
+        text: "{{ range .Alerts }}{{ .Annotations.description }}\n{{ end }}"
+        # text: 'https://internal.myorg.net/wiki/alerts/{{ .GroupLabels.app }}/{{ .GroupLabels.alertname }}'
+
+## Using default values from https://github.com/grafana/helm-charts/blob/main/charts/grafana/values.yaml
+##
+grafana:
+  enabled: true
+  adminPassword: prom-operator
+  defaultDashboardsTimezone: Asia/Hong_Kong
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+      - name: Prometheus
+        type: prometheus
+        version: 1
+        url: http://kube-prometheus-stack-prometheus.kube-prometheus-stack:9090/
+        access: proxy
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+      - name: 'default'
+        orgId: 1
+        folder: ''
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards/default
+  dashboards:
+    default:
+      aws-load-balancer-controller:
+        gnetId: 18319
+        revision: 2
+        datasource: Prometheus
+      linux-nf_conntrack:
+        gnetId: 12033
+        revision: 1
+        datasource: Prometheus
+      jvm-micrometer:
+        gnetId: 4701
+        revision: 10
+        datasource: Prometheus
+  grafana.ini:
+    auth:
+      sigv4_auth_enabled: true
+  persistence:
+    type: pvc
+    enabled: false
+    # storageClassName: default
+    accessModes:
+    - ReadWriteOnce
+    size: 10Gi
+  ingress:
+    ## If true, Grafana Ingress will be created
+    ##
+    enabled: ${grafana_ingress_enabled}
+
+    ## IngressClassName for Grafana Ingress.
+    ## Should be provided if Ingress is enable.
+    ##
+    ingressClassName: ${ingressClassName}
+
+    ## Annotations for Grafana Ingress
+    ##
+    annotations:
+      # alb.ingress.kubernetes.io/actions.ssl-redirect: '{"Type": "redirect", "RedirectConfig": { "Protocol": "HTTPS", "Port": "443", "StatusCode": "HTTP_301"}}'
+      alb.ingress.kubernetes.io/group.name: shared-alb
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80, "HTTPS": 443 }]'
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/certificate-arn: ${acm_cert_arn}
+      alb.ingress.kubernetes.io/success-codes: 200-310
+      # cert-manager.io/cluster-issuer: cert-manager-letsencrypt-production-route53
+      # kubernetes.io/ingress.class: nginx
+      # kubernetes.io/tls-acme: "true"
+
+    ## Labels to be added to the Ingress
+    ##
+    labels: {}
+
+    ## Hostnames.
+    ## Must be provided if Ingress is enable.
+    ##
+    # hosts:
+    #   - grafana.domain.com
+    hosts:
+    - ${grafana_host}
+
+    ## Path for grafana ingress
+    path: /

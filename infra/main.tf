@@ -143,17 +143,25 @@ module "eks" {
         }
       })
     }
+    aws-ebs-csi-driver = {
+      most_recent              = true
+      service_account_role_arn = module.ebs_csi_driver_irsa.iam_role_arn
+    }
   }
 
   # This MNG will be used to host infrastructure add-ons for
   # logging, monitoring, ingress controllers, kuberay-operator,
   # etc.
+  eks_managed_node_group_defaults = {
+    ami_type       = "AL2_x86_64"
+    disk_size      = 100
+    instance_types = ["m5.large"]
+  }
   eks_managed_node_groups = {
     infra = {
-      instance_types = ["m5.large"]
-      min_size       = 1
-      max_size       = 3
-      desired_size   = 3
+      min_size     = 1
+      max_size     = 3
+      desired_size = 3
     }
   }
 
@@ -204,12 +212,36 @@ module "eks_blueprints_addons" {
     repository_username = data.aws_ecrpublic_authorization_token.token.user_name
     repository_password = data.aws_ecrpublic_authorization_token.token.password
     max_history         = 10
+    set = [
+      {
+        name  = "settings.featureGates.drift"
+        value = true
+      },
+      {
+        name  = "settings.featureGates.spotToSpotConsolidation"
+        value = true
+      }
+    ]
   }
   karpenter_node = {
     create_instance_profile = true
     iam_role_additional_policies = [
       "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy",
       module.karpenter_policy.arn
+    ]
+  }
+
+  enable_aws_load_balancer_controller = true
+
+  enable_kube_prometheus_stack = true
+  kube_prometheus_stack = {
+    values = [
+      templatefile("${path.module}/helm-values/kube-prometheus-stack-values.yaml", {
+        grafana_ingress_enabled = true
+        ingressClassName        = var.ingress_class_name
+        grafana_host            = var.grafana_host
+        acm_cert_arn            = var.acm_cert_arn
+      })
     ]
   }
 
@@ -309,6 +341,19 @@ resource "kubectl_manifest" "karpenter_gpu_node_class" {
           karpenter.sh/discovery: ${local.name}
       tags:
         karpenter.sh/discovery: ${local.name}
+      blockDeviceMappings:
+        # Root device
+        - deviceName: /dev/xvda
+          ebs:
+            volumeSize: 50Gi
+            volumeType: gp3
+            encrypted: true
+        # Data device: Container resources such as images and logs
+        - deviceName: /dev/xvdb
+          ebs:
+            volumeSize: 100Gi
+            volumeType: gp3
+            encrypted: true
   YAML
   depends_on = [module.eks_blueprints_addons]
 }
@@ -357,6 +402,10 @@ resource "kubectl_manifest" "karpenter_gpu_node_pool" {
           - key: karpenter.sh/capacity-type
             operator: In
             values: ["on-demand", "spot"]
+        taints:
+        - effect: NoSchedule
+          key: ray.io/node-type
+          value: worker
   YAML
   depends_on = [module.eks_blueprints_addons]
 }
@@ -422,4 +471,60 @@ resource "kubectl_manifest" "karpenter_node_pool" {
             values: ["spot", "on-demand"]
   YAML
   depends_on = [module.eks_blueprints_addons]
+}
+
+module "ebs_csi_driver_irsa" {
+  source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
+  version = "~> 5.20"
+
+  role_name_prefix = "${module.eks.cluster_name}-ebs-csi-driver-"
+
+  attach_ebs_csi_policy = true
+
+  oidc_providers = {
+    main = {
+      provider_arn               = module.eks.oidc_provider_arn
+      namespace_service_accounts = ["kube-system:ebs-csi-controller-sa"]
+    }
+  }
+
+  tags = local.tags
+}
+
+#---------------------------------------------------------------
+# Disable default GP2 Storage Class
+#---------------------------------------------------------------
+resource "kubernetes_annotations" "disable_gp2" {
+  annotations = {
+    "storageclass.kubernetes.io/is-default-class" : "false"
+  }
+  api_version = "storage.k8s.io/v1"
+  kind        = "StorageClass"
+  metadata {
+    name = "gp2"
+  }
+  force = true
+
+  depends_on = [module.eks.eks_cluster_id]
+}
+#---------------------------------------------------------------
+# GP3 Storage Class - Set as default
+#---------------------------------------------------------------
+resource "kubernetes_storage_class" "default_gp3" {
+  metadata {
+    name = "gp3"
+    annotations = {
+      "storageclass.kubernetes.io/is-default-class" : "true"
+    }
+  }
+
+  storage_provisioner    = "ebs.csi.aws.com"
+  reclaim_policy         = "Delete"
+  allow_volume_expansion = true
+  volume_binding_mode    = "WaitForFirstConsumer"
+  parameters = {
+    type = "gp3"
+  }
+
+  depends_on = [kubernetes_annotations.disable_gp2]
 }
