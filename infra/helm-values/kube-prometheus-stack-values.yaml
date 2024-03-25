@@ -47,18 +47,6 @@ prometheus:
         action: keep
 
 
-# nodeExporter:
-#   enabled: true
-# prometheus-node-exporter:
-#   affinity:
-#     nodeAffinity:
-#       requiredDuringSchedulingIgnoredDuringExecution:
-#         nodeSelectorTerms:
-#           - key: eks.amazonaws.com/compute-type
-#             operator: NotIn
-#             values:
-#             - fargate
-
 alertmanager:
   enabled: false
   config:
@@ -85,7 +73,6 @@ alertmanager:
       - channel: '#webhook-alerts'
         title: "{{ range .Alerts }}{{ .Annotations.summary }}\n{{ end }}"
         text: "{{ range .Alerts }}{{ .Annotations.description }}\n{{ end }}"
-        # text: 'https://internal.myorg.net/wiki/alerts/{{ .GroupLabels.app }}/{{ .GroupLabels.alertname }}'
 
 ## Using default values from https://github.com/grafana/helm-charts/blob/main/charts/grafana/values.yaml
 ##
@@ -116,18 +103,8 @@ grafana:
           path: /var/lib/grafana/dashboards/default
   dashboards:
     default:
-      aws-load-balancer-controller:
-        gnetId: 18319
-        revision: 2
-        datasource: Prometheus
-      linux-nf_conntrack:
-        gnetId: 12033
-        revision: 1
-        datasource: Prometheus
-      jvm-micrometer:
-        gnetId: 4701
-        revision: 10
-        datasource: Prometheus
+      ray-default-dashboard:
+        url: https://raw.githubusercontent.com/ray-project/kuberay/master/config/grafana/default_grafana_dashboard.json
   grafana.ini:
     auth:
       sigv4_auth_enabled: true
@@ -142,7 +119,6 @@ grafana:
     ## If true, Grafana Ingress will be created
     ##
     enabled: ${grafana_ingress_enabled}
-
     ## IngressClassName for Grafana Ingress.
     ## Should be provided if Ingress is enable.
     ##
@@ -151,16 +127,13 @@ grafana:
     ## Annotations for Grafana Ingress
     ##
     annotations:
-      # alb.ingress.kubernetes.io/actions.ssl-redirect: '{"Type": "redirect", "RedirectConfig": { "Protocol": "HTTPS", "Port": "443", "StatusCode": "HTTP_301"}}'
       alb.ingress.kubernetes.io/group.name: shared-alb
       alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80, "HTTPS": 443 }]'
       alb.ingress.kubernetes.io/scheme: internet-facing
       alb.ingress.kubernetes.io/target-type: ip
       alb.ingress.kubernetes.io/certificate-arn: ${acm_cert_arn}
       alb.ingress.kubernetes.io/success-codes: 200-310
-      # cert-manager.io/cluster-issuer: cert-manager-letsencrypt-production-route53
-      # kubernetes.io/ingress.class: nginx
-      # kubernetes.io/tls-acme: "true"
+      alb.ingress.kubernetes.io/security-groups: ${elb_security_group_id}
 
     ## Labels to be added to the Ingress
     ##
@@ -168,9 +141,6 @@ grafana:
 
     ## Hostnames.
     ## Must be provided if Ingress is enable.
-    ##
-    # hosts:
-    #   - grafana.domain.com
     hosts:
     - ${grafana_host}
 

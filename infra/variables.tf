@@ -22,6 +22,12 @@ variable "pyannote_auth_token" {
   sensitive = true
 }
 
+variable "grafana_ingress_enabled" {
+  description = "Enable Grafana Ingress or not"
+  type = bool
+  default = false
+}
+
 variable "grafana_host" {
   description = "Grafana Dashboard URL"
   default     = "grafana.domain.com"

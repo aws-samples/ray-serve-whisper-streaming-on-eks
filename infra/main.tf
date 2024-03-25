@@ -165,6 +165,17 @@ module "eks" {
     }
   }
 
+  node_security_group_additional_rules = {
+    ingress_elb = {
+      description              = "Allow ELB access to worker nodes"
+      protocol                 = "-1"
+      from_port                = 0
+      to_port                  = 0
+      type                     = "ingress"
+      source_security_group_id = module.elb_security_group.security_group_id
+    }
+  }
+
   tags = merge(local.tags, {
     "karpenter.sh/discovery" = local.name
   })
@@ -237,10 +248,11 @@ module "eks_blueprints_addons" {
   kube_prometheus_stack = {
     values = [
       templatefile("${path.module}/helm-values/kube-prometheus-stack-values.yaml", {
-        grafana_ingress_enabled = true
+        grafana_ingress_enabled = var.grafana_ingress_enabled
         ingressClassName        = var.ingress_class_name
         grafana_host            = var.grafana_host
         acm_cert_arn            = var.acm_cert_arn
+        elb_security_group_id   = module.elb_security_group.security_group_id
       })
     ]
   }
@@ -267,6 +279,24 @@ module "eks_blueprints_addons" {
       repository       = "https://ray-project.github.io/kuberay-helm/"
     }
   }
+}
+
+
+#---------------------------------------------------------------
+# Security Group for ELBs
+#---------------------------------------------------------------
+# We have to create dedicated Security Group for ELBs
+module "elb_security_group" {
+  source  = "terraform-aws-modules/security-group/aws"
+  version = "~>5.1"
+
+  name        = "elb-sg"
+  description = "Security group for user-service with custom ports open within VPC, and PostgreSQL publicly open"
+  vpc_id      = module.vpc.vpc_id
+
+  ingress_cidr_blocks = ["0.0.0.0/0"]
+  ingress_rules       = ["https-443-tcp", "http-80-tcp"]
+  egress_rules        = ["all-all"]
 }
 
 
@@ -532,8 +562,8 @@ resource "kubernetes_storage_class" "default_gp3" {
 
 resource "kubernetes_secret" "pyannote_auth_token" {
   metadata {
-    name = "my-secret"
-    namespace = "default"  # replace with your desired namespace
+    name      = "my-secret"
+    namespace = "default" # replace with your desired namespace
   }
 
   data = {
@@ -541,6 +571,6 @@ resource "kubernetes_secret" "pyannote_auth_token" {
   }
 
   type = "Opaque"
-  
+
   depends_on = [module.eks.eks_cluster_id]
 }
