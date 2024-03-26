@@ -553,3 +553,15 @@ resource "kubernetes_secret" "pyannote_auth_token" {
 
   depends_on = [module.eks.eks_cluster_id]
 }
+
+resource "kubernetes_manifest" "ray_monitoring" {
+  for_each = fileset(path.module, "monitoring/*.yaml")
+
+  manifest = yamldecode(file("${path.module}/${each.value}"))
+
+  field_manager {
+    force_conflicts = true
+  }
+
+  depends_on = [module.eks.eks_cluster_id]
+}

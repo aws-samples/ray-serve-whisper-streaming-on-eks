@@ -2202,7 +2202,7 @@
     },
     "timepicker": {},
     "timezone": "",
-    "title": "Serve Dashboard",
+    "title": "Ray Serve Dashboard",
     "uid": "rayServeDashboard",
     "version": 1
 }
