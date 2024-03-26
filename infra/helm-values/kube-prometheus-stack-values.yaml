@@ -103,8 +103,12 @@ grafana:
           path: /var/lib/grafana/dashboards/default
   dashboards:
     default:
-      ray-default-dashboard:
+      kuberay-default-dashboard:
         url: https://raw.githubusercontent.com/ray-project/kuberay/master/config/grafana/default_grafana_dashboard.json
+        # kuberay-api-server-service-dashboard:
+        #   url: https://raw.githubusercontent.com/ray-project/kuberay/master/config/grafana/KubeRay-ApiServer-1650105351221.json
+        # kuberay-controller-runtime-dashboard:
+        #   url: https://raw.githubusercontent.com/ray-project/kuberay/master/config/grafana/KubeRay-Controller-Runtime-Controllers-1650108080992.json
   grafana.ini:
     auth:
       sigv4_auth_enabled: true

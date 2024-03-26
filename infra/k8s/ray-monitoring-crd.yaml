@@ -1,0 +1,92 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ray-head-monitor
+  namespace: kube-prometheus-stack
+  labels:
+    # `release: $HELM_RELEASE`: Prometheus can only detect ServiceMonitor with this label.
+    release: kube-prometheus-stack
+spec:
+  jobLabel: ray-head
+  namespaceSelector:
+    matchNames:
+    - default
+  # Only select Kubernetes Services with "matchLabels".
+  selector:
+    matchLabels:
+      ray.io/node-type: head
+  # A list of endpoints allowed as part of this ServiceMonitor.
+  endpoints:
+  - port: metrics
+  targetLabels:
+  - ray.io/cluster
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: ray-workers-monitor
+  namespace: kube-prometheus-stack
+  labels:
+    release: kube-prometheus-stack
+    ray.io/cluster: raycluster-kuberay # $RAY_CLUSTER_NAME: "kubectl get rayclusters.ray.io"
+spec:
+  jobLabel: ray-workers
+  # Only select Kubernetes Pods in the "default" namespace.
+  namespaceSelector:
+    matchNames:
+    - default
+  # Only select Kubernetes Pods with "matchLabels".
+  selector:
+    matchLabels:
+      ray.io/node-type: worker
+  # A list of endpoints allowed as part of this PodMonitor.
+  podMetricsEndpoints:
+  - port: metrics
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: ray-cluster-gcs-rules
+  namespace: kube-prometheus-stack
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+  #  Rules within a group are run periodically with the same evaluation interval(30s in this example).
+  - name: ray-cluster-main-staging-gcs.rules
+    # How often rules in the group are evaluated.
+    interval: 30s
+    rules:
+    - # The name of the custom metric.
+      # Also see best practices for naming metrics created by recording rules:
+      # https://prometheus.io/docs/practices/rules/#recording-rules
+      record: ray_gcs_availability_30d
+      # PromQL expression.
+      expr: |
+        (
+          100 * (
+            sum(rate(ray_gcs_update_resource_usage_time_bucket{container="ray-head", le="20.0"}[30d]))
+            /
+            sum(rate(ray_gcs_update_resource_usage_time_count{container="ray-head"}[30d]))
+          )
+        )
+    - alert: MissingMetricRayGlobalControlStore
+      # A set of informational labels. Annotations can be used to store longer additional information compared to rules.0.labels.
+      annotations:
+        description: Ray GCS is not emitting any metrics for Resource Update requests
+        summary: Ray GCS is not emitting metrics anymore
+      # PromQL expression.
+      expr: |
+        (
+         absent(ray_gcs_update_resource_usage_time_bucket) == 1
+        )
+      # Time that Prometheus will wait and check if the alert continues to be active during each evaluation before firing the alert.
+      # firing alerts may be due to false positives or noise if the setting value is too small.
+      # On the other hand, if the value is too big, the alerts may not be handled in time.
+      for: 5m
+      # A set of additional labels to be attached to the alert.
+      # It is possible to overwrite the labels in metadata.labels, so make sure one of the labels match the label in ruleSelector.matchLabels.
+      labels:
+        severity: critical
