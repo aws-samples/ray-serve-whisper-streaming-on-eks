@@ -359,7 +359,7 @@ resource "kubectl_manifest" "karpenter_gpu_node_class" {
     apiVersion: karpenter.k8s.aws/v1beta1
     kind: EC2NodeClass
     metadata:
-      name: bottlerocket-nvidia
+      name: default
     spec:
       amiFamily: Bottlerocket
       role: ${module.eks_blueprints_addons.karpenter.node_iam_role_name}
@@ -406,7 +406,7 @@ resource "kubectl_manifest" "karpenter_gpu_node_pool" {
       template:
         spec:
           nodeClassRef:
-            name: bottlerocket-nvidia
+            name: default
           requirements:
           - key: kubernetes.io/arch
             operator: In
@@ -432,32 +432,10 @@ resource "kubectl_manifest" "karpenter_gpu_node_pool" {
           - key: karpenter.sh/capacity-type
             operator: In
             values: ["on-demand", "spot"]
-        taints:
-        - effect: NoSchedule
-          key: ray.io/node-type
-          value: worker
-  YAML
-  depends_on = [module.eks_blueprints_addons]
-}
-
-
-resource "kubectl_manifest" "karpenter_ec2_node_class" {
-  yaml_body  = <<-YAML
-    apiVersion: karpenter.k8s.aws/v1beta1
-    kind: EC2NodeClass
-    metadata:
-      name: default
-    spec:
-      amiFamily: AL2023
-      role: ${module.eks_blueprints_addons.karpenter.node_iam_role_name}
-      securityGroupSelectorTerms:
-      - tags:
-          Name: ${local.name}-node
-      subnetSelectorTerms:
-      - tags:
-          karpenter.sh/discovery: ${local.name}
-      tags:
-        karpenter.sh/discovery: ${local.name}
+          taints:
+          - effect: NoSchedule
+            key: ray.io/node-type
+            value: worker
   YAML
   depends_on = [module.eks_blueprints_addons]
 }
@@ -498,7 +476,7 @@ resource "kubectl_manifest" "karpenter_node_pool" {
             values: ["amd64"]
           - key: "karpenter.sh/capacity-type"
             operator: In
-            values: ["spot", "on-demand"]
+            values: ["on-demand"]
   YAML
   depends_on = [module.eks_blueprints_addons]
 }
