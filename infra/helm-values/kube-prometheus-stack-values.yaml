@@ -105,13 +105,14 @@ grafana:
     default:
       kuberay-default-dashboard:
         url: https://raw.githubusercontent.com/ray-project/kuberay/master/config/grafana/default_grafana_dashboard.json
-        # kuberay-api-server-service-dashboard:
-        #   url: https://raw.githubusercontent.com/ray-project/kuberay/master/config/grafana/KubeRay-ApiServer-1650105351221.json
-        # kuberay-controller-runtime-dashboard:
-        #   url: https://raw.githubusercontent.com/ray-project/kuberay/master/config/grafana/KubeRay-Controller-Runtime-Controllers-1650108080992.json
+      ray-serve-dashbaord:
+        url: https://raw.githubusercontent.com/aws-samples/ray-serve-whisper-streaming-on-eks/main/infra/ray-dashboard/serve_grafana_dashboard.json
+      ray-serve-deployment-dashboard:
+        url: https://raw.githubusercontent.com/aws-samples/ray-serve-whisper-streaming-on-eks/main/infra/ray-dashboard/serve_deployment_grafana_dashboard.json
   grafana.ini:
     auth:
       sigv4_auth_enabled: true
+  useStatefulSet: true
   persistence:
     type: pvc
     enabled: false
