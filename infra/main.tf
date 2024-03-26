@@ -431,7 +431,7 @@ resource "kubectl_manifest" "karpenter_gpu_node_pool" {
             values: ${jsonencode(local.azs)}
           - key: karpenter.sh/capacity-type
             operator: In
-            values: ["on-demand", "spot"]
+            values: ["on-demand"]
           taints:
           - effect: NoSchedule
             key: ray.io/node-type
@@ -448,8 +448,9 @@ resource "kubectl_manifest" "karpenter_node_pool" {
       name: default
     spec:
       disruption:
-        consolidationPolicy: WhenUnderutilized
-        expireAfter: 72h0m0s
+        consolidateAfter: 600s
+        consolidationPolicy: WhenEmpty
+        expireAfter: 720h
       limits:
         cpu: 1k
       template:
