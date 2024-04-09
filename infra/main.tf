@@ -15,13 +15,7 @@ provider "aws" {
 provider "kubernetes" {
   host                   = module.eks.cluster_endpoint
   cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
-
-  exec {
-    api_version = "client.authentication.k8s.io/v1beta1"
-    command     = "aws"
-    # This requires the awscli to be installed locally where Terraform is executed
-    args = ["eks", "get-token", "--cluster-name", module.eks.cluster_name]
-  }
+  token                  = data.aws_eks_cluster_auth.this.token
 }
 
 provider "helm" {
@@ -38,23 +32,13 @@ provider "helm" {
   }
 }
 
-provider "kubectl" {
-  apply_retry_count      = 5
-  host                   = module.eks.cluster_endpoint
-  cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
-  load_config_file       = false
-
-  exec {
-    api_version = "client.authentication.k8s.io/v1beta1"
-    command     = "aws"
-    # This requires the awscli to be installed locally where Terraform is executed
-    args = ["eks", "get-token", "--cluster-name", module.eks.cluster_name]
-  }
-}
 
 #---------------------------------------------------------------
 # Data Sources
 #---------------------------------------------------------------
+data "aws_eks_cluster_auth" "this" {
+  name = module.eks.cluster_name
+}
 
 data "aws_availability_zones" "available" {}
 
@@ -237,8 +221,7 @@ module "eks_blueprints_addons" {
   karpenter_node = {
     create_instance_profile = true
     iam_role_additional_policies = [
-      "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy",
-      module.karpenter_policy.arn
+      "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
     ]
   }
 
@@ -299,41 +282,6 @@ module "elb_security_group" {
   egress_rules        = ["all-all"]
 }
 
-
-#---------------------------------------------------------------
-# Karpenter Infrastructure
-#---------------------------------------------------------------
-# We have to augment default the karpenter node IAM policy with
-# permissions we need for Ray Jobs to run until IRSA is added
-# upstream in kuberay-operator. See issue
-# https://github.com/ray-project/kuberay/issues/746
-module "karpenter_policy" {
-  source  = "terraform-aws-modules/iam/aws//modules/iam-policy"
-  version = "~> 5.20"
-
-  name        = "KarpenterS3ReadOnlyPolicy"
-  description = "IAM Policy to allow read from an S3 bucket for karpenter nodes"
-
-  policy = jsonencode(
-    {
-      Version = "2012-10-17"
-      Statement = [
-        {
-          Sid      = "ListObjectsInBucket"
-          Effect   = "Allow"
-          Action   = ["s3:ListBucket"]
-          Resource = ["arn:aws:s3:::air-example-data-2"]
-        },
-        {
-          Sid      = "AllObjectActions"
-          Effect   = "Allow"
-          Action   = "s3:Get*"
-          Resource = ["arn:aws:s3:::air-example-data-2/*"]
-        }
-      ]
-    }
-  )
-}
 
 resource "kubectl_manifest" "karpenter_controller_security_group_policy" {
   yaml_body = <<-YAML
@@ -550,18 +498,6 @@ resource "kubernetes_secret" "pyannote_auth_token" {
   }
 
   type = "Opaque"
-
-  depends_on = [module.eks.eks_cluster_id]
-}
-
-resource "kubernetes_manifest" "ray_monitoring" {
-  for_each = fileset(path.module, "monitoring/*.yaml")
-
-  manifest = yamldecode(file("${path.module}/${each.value}"))
-
-  field_manager {
-    force_conflicts = true
-  }
 
   depends_on = [module.eks.eks_cluster_id]
 }
