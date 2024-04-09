@@ -60,6 +60,9 @@ locals {
   azs                = slice(data.aws_availability_zones.available.names, 0, 3)
 
   cluster_version = var.eks_cluster_version
+  additional_iam_policies = [
+    "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+  ]
 
   tags = {
     Blueprint  = local.name
@@ -100,39 +103,6 @@ module "eks" {
     },
   ]
 
-  # EKS Addons
-  cluster_addons = {
-    coredns = {
-      most_recent = true
-    }
-    kube-proxy = {
-      most_recent = true
-    }
-    vpc-cni = {
-      # The VPC CNI addon should be deployed before compute to ensure
-      # the addon is configured before data plane compute resources are created
-      # See README for further details
-      before_compute = true
-      most_recent    = true # To ensure access to the latest settings provided
-      preserve       = true
-      configuration_values = jsonencode({
-        env = {
-          # Reference https://aws.github.io/aws-eks-best-practices/reliability/docs/networkmanagement/#cni-custom-networking
-          AWS_VPC_K8S_CNI_CUSTOM_NETWORK_CFG = "true"
-          ENI_CONFIG_LABEL_DEF               = "topology.kubernetes.io/zone"
-
-          # Reference docs https://docs.aws.amazon.com/eks/latest/userguide/cni-increase-ip-addresses.html
-          ENABLE_PREFIX_DELEGATION = "true"
-          WARM_PREFIX_TARGET       = "1"
-        }
-      })
-    }
-    aws-ebs-csi-driver = {
-      most_recent              = true
-      service_account_role_arn = module.ebs_csi_driver_irsa.iam_role_arn
-    }
-  }
-
   # This MNG will be used to host infrastructure add-ons for
   # logging, monitoring, ingress controllers, kuberay-operator,
   # etc.
@@ -140,6 +110,9 @@ module "eks" {
     ami_type       = "AL2_x86_64"
     disk_size      = 100
     instance_types = ["m5.large"]
+    iam_role_additional_policies = {
+      for k, v in local.additional_iam_policies : k => v
+    }
   }
   eks_managed_node_groups = {
     infra = {
@@ -200,6 +173,38 @@ module "eks_blueprints_addons" {
   cluster_endpoint  = module.eks.cluster_endpoint
   cluster_version   = module.eks.cluster_version
   oidc_provider_arn = module.eks.oidc_provider_arn
+
+  eks_addons = {
+    coredns = {
+      most_recent = true
+    }
+    kube-proxy = {
+      most_recent = true
+    }
+    vpc-cni = {
+      # The VPC CNI addon should be deployed before compute to ensure
+      # the addon is configured before data plane compute resources are created
+      # See README for further details
+      before_compute = true
+      most_recent    = true # To ensure access to the latest settings provided
+      preserve       = true
+      configuration_values = jsonencode({
+        env = {
+          # Reference https://aws.github.io/aws-eks-best-practices/reliability/docs/networkmanagement/#cni-custom-networking
+          AWS_VPC_K8S_CNI_CUSTOM_NETWORK_CFG = "true"
+          ENI_CONFIG_LABEL_DEF               = "topology.kubernetes.io/zone"
+
+          # Reference docs https://docs.aws.amazon.com/eks/latest/userguide/cni-increase-ip-addresses.html
+          ENABLE_PREFIX_DELEGATION = "true"
+          WARM_PREFIX_TARGET       = "1"
+        }
+      })
+    }
+    aws-ebs-csi-driver = {
+      most_recent              = true
+      service_account_role_arn = module.ebs_csi_driver_irsa.iam_role_arn
+    }
+  }
 
   enable_karpenter = true
   karpenter = {
