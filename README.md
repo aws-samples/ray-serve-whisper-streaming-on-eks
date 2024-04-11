@@ -19,29 +19,24 @@ The project is based on VoiceStreamAI (https://github.com/alesaccoia/VoiceStream
 
 Ray is intended for use for strict controlled network only. It is strongly recommend that you should avoid expose the Ray Dashboard service or Ray Serve service to the Internet without proper authentication and control.    
 
-## Deployment 
+## Setup
 
-1. In this EKS cluster, Karpenter and KubeRay helm chart, and NodePool and EC2NodeClass custom resource will be deployed. 
+1. Before start, modify the variables in `dev.auto.tfvars`. Only `pyannote_auth_token` is mandatory, which is essentially a [Hugging Face](https://huggingface.co/) auth token.
 
 ```
-cd infra
+cd infra/
+cp tfvars-example dev.auto.tfvars
+```
+
+2. Set up EKS cluster, Karpenter and KubeRay helm chart, and NodePool and EC2NodeClass custom resource will be deployed. 
+
+```
 ./install.sh
-```
-
-2. Edit the `PYANNOTE_AUTH_TOKEN` and provide a Hugging Face token in the environment variable. For best practice, store the token in a Kubernetes secret.
-
-```
-❯ vi Whisper-RayService.yaml
-
-         ...
-         env_vars: {"PYANNOTE_AUTH_TOKEN": "hf_123"}
-         ...
-
 ```
 
 3. Deploy the KubeRay Service.
 ```
-❯ kubectl apply -f Whisper-RayService.yaml
+❯ kubectl apply -f ../Whisper-RayService.yaml
 ```
 
 3. Check the Ray workers and Ray Serve deployments are ready:
