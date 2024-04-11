@@ -39,7 +39,7 @@ cp tfvars-example dev.auto.tfvars
 ❯ kubectl apply -f ../Whisper-RayService.yaml
 ```
 
-3. Check the Ray workers and Ray Serve deployments are ready:
+4. Check the Ray workers and Ray Serve deployments are ready:
 
 ```
 # Check Ray workers are ready
