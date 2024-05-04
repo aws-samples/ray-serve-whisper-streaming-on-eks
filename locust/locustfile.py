@@ -1,14 +1,14 @@
 import pathlib
 from gevent.pool import Pool
-from locust import User, task, between
+from locust import User, task
 from pydub import AudioSegment
+from websockets.sync.client import connect
 
-import json
+import os
 import time
 import logging
 
-
-from websockets.sync.client import connect
+logging.basicConfig(level=logging.INFO)
 
 
 class WebSocketUser(User):
@@ -29,7 +29,6 @@ class WebSocketUser(User):
 
 class WhisperWebSocketUser(WebSocketUser):
     host = "ws://localhost:8000"
-    # wait_time = between(0.5, 1.5)
 
     def on_start(self):
 
@@ -40,35 +39,39 @@ class WhisperWebSocketUser(WebSocketUser):
                 except Exception as e:
                     pass
                 else:
-                    with self.environment.events.request.measure("[Receive]", "Response"):
+                    with self.environment.events.request.measure(
+                        "[Receive]", "Response"
+                    ):
                         logging.info(f"{transcription_str}")
-                        # transcription = json.loads(transcription_str)
-                        # logging.info(
-                            # f"Received transcription: {transcription['text']}, processing time: {transcription['processing_time']}")
+
         self.pool.spawn(_receive)
 
     @task
     def send_streaming_audio(self):
 
-        audio_file = "./data/eng_speech.wav"
+        for filename in os.listdir("./data"):
+            if filename.endswith(".wav"):
+                audio_file = os.path.join("./data", filename)
+                logging.info(f"Loading audio file: {audio_file}")
 
-        with open(audio_file, 'rb') as file:
-            logging.info("Loading audio file")
-            file_format = pathlib.Path(audio_file).suffix[1:]
-            try:
-                audio = AudioSegment.from_file(file, format=file_format)
-            except Exception as e:
-                print("File loading error:", e)
+                with open(audio_file, "rb") as file:
+                    file_format = pathlib.Path(audio_file).suffix[1:]
+                    try:
+                        audio = AudioSegment.from_file(file, format=file_format)
+                    except Exception as e:
+                        logging.error("File loading error:", e)
 
-            logging.info("Start sending audio")
-            for i in range(0, len(audio), 250):
-                chunk = audio[i:i + 250]
-                with self.environment.events.request.measure("[Send]", "Audio trunks"):
-                    # logging.info(f"Sending trunk {i}...")
-                    self.client.send(chunk.raw_data)
-                    time.sleep(0.25)
-            silence = AudioSegment.silent(duration=10000)
-            self.client.send(silence.raw_data)
-            logging.info("Sent silence")
+                    logging.info("Start sending audio")
+                    for i in range(0, len(audio), 250):
+                        chunk = audio[i : i + 250]
+                        with self.environment.events.request.measure(
+                            "[Send]", "Audio trunks"
+                        ):
+                            logging.debug(f"Sending trunk {i}...")
+                            self.client.send(chunk.raw_data)
+                            time.sleep(0.25)
+                    silence = AudioSegment.silent(duration=10000)
+                    self.client.send(silence.raw_data)
+                    logging.info("Sent silence")
 
         logging.info("Finished sending audio")
