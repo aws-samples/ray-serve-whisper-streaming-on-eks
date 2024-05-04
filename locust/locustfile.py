@@ -3,6 +3,7 @@ from gevent.pool import Pool
 from locust import User, task
 from pydub import AudioSegment
 from websockets.sync.client import connect
+from websockets.exceptions import InvalidMessage
 
 import os
 import time
@@ -36,8 +37,11 @@ class WhisperWebSocketUser(WebSocketUser):
             while True:
                 try:
                     transcription_str = self.client.recv()
+                except InvalidMessage as e:
+                    logging.error("Invalid message:", e)
                 except Exception as e:
-                    pass
+                    logging.error("Error:", e)
+                    break
                 else:
                     with self.environment.events.request.measure(
                         "[Receive]", "Response"
