@@ -1,6 +1,7 @@
 import pathlib
 from gevent.pool import Pool
 from locust import User, task
+from locust.exception import StopUser
 from pydub import AudioSegment
 from websockets.sync.client import connect
 from websockets.exceptions import InvalidMessage
@@ -8,6 +9,8 @@ from websockets.exceptions import InvalidMessage
 import os
 import time
 import logging
+import json
+
 
 logging.basicConfig(level=logging.INFO)
 
@@ -20,16 +23,6 @@ class WebSocketUser(User):
         self.pool = Pool(1)
         with self.environment.events.request.measure("[Connect]", "Websocket"):
             self.client = connect(self.host)
-
-    def on_stop(self):
-        super().on_stop()
-        logging.info("Closing websocket connection")
-        self.pool.kill()
-        self.client.close()
-
-
-class WhisperWebSocketUser(WebSocketUser):
-    host = "ws://localhost:8000"
 
     def on_start(self):
 
@@ -46,20 +39,35 @@ class WhisperWebSocketUser(WebSocketUser):
                     with self.environment.events.request.measure(
                         "[Receive]", "Response"
                     ):
-                        logging.info(f"{transcription_str}")
+                        client_id = self.client.id
+                        transcription_end = time.time()
+                        time_elapse = round(transcription_end - self.start_time, 2)
+                        transcription_json = json.loads(transcription_str)
+                        logging.debug(transcription_json)
+                        logging.info(
+                            f"[{client_id}] Time elapse: {time_elapse}s, Received: {transcription_json['text']}"
+                        )
 
         self.pool.spawn(_receive)
+
+    def on_stop(self):
+        super().on_stop()
+        logging.info("Closing websocket connection")
+        self.pool.kill()
+        self.client.close()
 
     @task
     def send_streaming_audio(self):
 
-        for filename in os.listdir("./data"):
+        self.start_time = time.time()
+        for filename in os.listdir(self.audio_file_path):
             if filename.endswith(".wav"):
-                audio_file = os.path.join("./data", filename)
+                audio_file = os.path.join(self.audio_file_path, filename)
                 logging.info(f"Loading audio file: {audio_file}")
 
                 with open(audio_file, "rb") as file:
                     file_format = pathlib.Path(audio_file).suffix[1:]
+                    logging.debug(f"File format: {file_format}")
                     try:
                         audio = AudioSegment.from_file(file, format=file_format)
                     except Exception as e:
@@ -77,5 +85,16 @@ class WhisperWebSocketUser(WebSocketUser):
                     silence = AudioSegment.silent(duration=10000)
                     self.client.send(silence.raw_data)
                     logging.info("Sent silence")
+        raise StopUser()
 
-        logging.info("Finished sending audio")
+
+class EnglisthStreamWhisperWebSocketUser(WebSocketUser):
+    host = "ws://localhost:8000"
+    audio_file_path = "./data/zh"
+    start_time: float = 0.0
+
+
+class ChineseStreamWhisperWebSocketUser(WebSocketUser):
+    host = "ws://localhost:8000"
+    audio_file_path = "./data/en"
+    start_time: float = 0.0
