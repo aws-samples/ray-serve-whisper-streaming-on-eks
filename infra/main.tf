@@ -516,7 +516,7 @@ resource "kubernetes_storage_class" "default_gp3" {
 
 resource "kubernetes_secret" "pyannote_auth_token" {
   metadata {
-    name      = "my-secret"
+    name      = "hf-token"
     namespace = "default" # replace with your desired namespace
   }
 
