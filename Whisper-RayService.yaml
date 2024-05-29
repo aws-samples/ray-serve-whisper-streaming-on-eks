@@ -13,80 +13,80 @@ spec:
       template:
         spec:
           containers:
-            - env:
-                - name: RAY_GRAFANA_HOST
-                  value: http://kube-prometheus-stack-grafana.kube-prometheus-stack.svc:80
-                - name: RAY_PROMETHEUS_HOST
-                  value: http://kube-prometheus-stack-prometheus.kube-prometheus-stack.svc:9090
-                - name: PYANNOTE_AUTH_TOKEN
-                  valueFrom:
-                    secretKeyRef:
-                      name: my-secret
-                      key: token
-              image: public.ecr.aws/darrenlin/ray-whisper-streaming:latest
-              name: ray-head
-              ports:
-                - containerPort: 6379
-                  name: gcs
-                  protocol: TCP
-                - containerPort: 8265
-                  name: dashboard
-                  protocol: TCP
-                - containerPort: 10001
-                  name: client
-                  protocol: TCP
-                - containerPort: 8000
-                  name: serve
-                  protocol: TCP
-              resources:
-                limits:
-                  cpu: "2"
-                  memory: 8G
-                requests:
-                  cpu: "2"
-                  memory: 8G
-              securityContext:
-                capabilities:
-                  add:
-                    - SYS_PTRACE
-              volumeMounts:
-                - mountPath: /tmp/ray
-                  name: ray-logs
-          volumes:
-            - emptyDir: {}
+          - env:
+            - name: RAY_GRAFANA_HOST
+              value: http://kube-prometheus-stack-grafana.kube-prometheus-stack.svc:80
+            - name: RAY_PROMETHEUS_HOST
+              value: http://kube-prometheus-stack-prometheus.kube-prometheus-stack.svc:9090
+            - name: PYANNOTE_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: my-secret
+                  key: token
+            image: public.ecr.aws/darrenlin/ray-whisper-streaming:latest
+            name: ray-head
+            ports:
+            - containerPort: 6379
+              name: gcs
+              protocol: TCP
+            - containerPort: 8265
+              name: dashboard
+              protocol: TCP
+            - containerPort: 10001
+              name: client
+              protocol: TCP
+            - containerPort: 8000
+              name: serve
+              protocol: TCP
+            resources:
+              limits:
+                cpu: "2"
+                memory: 8G
+              requests:
+                cpu: "2"
+                memory: 8G
+            securityContext:
+              capabilities:
+                add:
+                - SYS_PTRACE
+            volumeMounts:
+            - mountPath: /tmp/ray
               name: ray-logs
+          volumes:
+          - emptyDir: {}
+            name: ray-logs
     rayVersion: 2.9.2
     workerGroupSpecs:
-      - groupName: gpu-group
-        maxReplicas: 20
-        minReplicas: 1
-        rayStartParams: {}
-        replicas: 2
-        template:
-          spec:
-            containers:
-              - env:
-                  - name: PYANNOTE_AUTH_TOKEN
-                    valueFrom:
-                      secretKeyRef:
-                        name: my-secret
-                        key: token
-                image: public.ecr.aws/darrenlin/ray-whisper-streaming:latest
-                name: ray-worker
-                resources:
-                  limits:
-                    cpu: 4
-                    memory: 16G
-                    nvidia.com/gpu: 1
-                  requests:
-                    cpu: 3
-                    memory: 12G
-                    nvidia.com/gpu: 1
-            tolerations:
-              - effect: NoSchedule
-                key: ray.io/node-type
-                operator: Equal
-                value: worker
+    - groupName: gpu-group
+      maxReplicas: 20
+      minReplicas: 1
+      rayStartParams: {}
+      replicas: 2
+      template:
+        spec:
+          containers:
+          - env:
+            - name: PYANNOTE_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: my-secret
+                  key: token
+            image: public.ecr.aws/darrenlin/ray-whisper-streaming:latest
+            name: ray-worker
+            resources:
+              limits:
+                cpu: 4
+                memory: 16G
+                nvidia.com/gpu: 1
+              requests:
+                cpu: 3
+                memory: 12G
+                nvidia.com/gpu: 1
+          tolerations:
+          - effect: NoSchedule
+            key: ray.io/node-type
+            operator: Equal
+            value: worker
   serveConfigV2: |
     applications:
       - name: whisper_app
@@ -116,3 +116,32 @@ spec:
             max_replicas: 20
             initial_replicas: 3
   serviceUnhealthySecondThreshold: 900
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: whisper-streaming
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: "/$1"
+spec:
+  ingressClassName: nginx
+  rules:
+  - http:
+      paths:
+      # Ray Dashboard
+      - path: /dashboard/(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: whisper-streaming-head-svc
+            port:
+              number: 8265
+      # Ray Serve
+      - path: /serve/(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: whisper-streaming-serve-svc
+            port:
+              number: 8000

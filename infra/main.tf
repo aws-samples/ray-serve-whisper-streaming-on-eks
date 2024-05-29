@@ -246,6 +246,14 @@ module "eks_blueprints_addons" {
 
   enable_aws_load_balancer_controller = true
 
+  #---------------------------------------
+  # Ingress Nginx Add-on
+  #---------------------------------------
+  enable_ingress_nginx = true
+  ingress_nginx = {
+    values = [templatefile("${path.module}/helm-values/ingress-nginx-values.yaml", {})]
+  }
+
   enable_kube_prometheus_stack = true
   kube_prometheus_stack = {
     values = [
