@@ -245,6 +245,14 @@ module "eks_blueprints_addons" {
   }
 
   enable_aws_load_balancer_controller = true
+  aws_load_balancer_controller = {
+    set = [
+      {
+        name  = "backendSecurityGroup"
+        value = module.elb_security_group.security_group_id
+      }
+    ]
+  }
 
   #---------------------------------------
   # Ingress Nginx Add-on
@@ -301,7 +309,7 @@ module "elb_security_group" {
   version = "~>5.1"
 
   name        = "elb-sg"
-  description = "Security group for user-service with custom ports open within VPC, and PostgreSQL publicly open"
+  description = "Security group for elbs"
   vpc_id      = module.vpc.vpc_id
 
   ingress_cidr_blocks = ["0.0.0.0/0"]
