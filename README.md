@@ -19,7 +19,7 @@ The project is based on VoiceStreamAI (https://github.com/alesaccoia/VoiceStream
 
 Ray is intended for use for strict controlled network only. It is strongly recommend that you should avoid expose the Ray Dashboard service or Ray Serve service to the Internet without proper authentication and control.    
 
-## ⚠️⚠️⚠️ IMPORTANT ⚠️⚠️⚠️
+## ⚠️ ⚠️ ⚠️ IMPORTANT ⚠️ ⚠️ ⚠️
 
 It is necessary to request access for the model [pyannote/segmentation-3.0](https://huggingface.co/pyannote/segmentation-3.0) on Hugging Face. If you encounter errors for running the VAD deployment, double check that you have obtained the model access.  
 
