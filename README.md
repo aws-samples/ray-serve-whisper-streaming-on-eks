@@ -21,7 +21,7 @@ Ray is intended for use for strict controlled network only. It is strongly recom
 
 ## ⚠️ ⚠️ ⚠️ IMPORTANT ⚠️ ⚠️ ⚠️
 
-It is necessary to request access for the model [pyannote/segmentation-3.0](https://huggingface.co/pyannote/segmentation-3.0) on Hugging Face. If you encounter errors for running the VAD deployment, double check that you have obtained the model access.  
+It is necessary to request access for the model [pyannote/segmentation](https://huggingface.co/pyannote/segmentation) on Hugging Face. If you encounter errors for running the VAD deployment, double check that you have obtained the model access.  
 
 ## Setup
 
