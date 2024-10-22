@@ -1,4 +1,5 @@
 pyannote_auth_token = "hf_xxxxxxxx"
+region = "us-west-2"
 grafana_ingress_enabled = false
 grafana_host = "grafana.domain.com"
 acm_cert_arn = "arn:aws:acm:region-code:account-id:certificate/xxxxxxxx"
