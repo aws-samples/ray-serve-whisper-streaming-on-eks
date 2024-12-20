@@ -244,7 +244,7 @@ module "eks_blueprints_addons" {
     ]
   }
 
-  enable_aws_load_balancer_controller = true
+  enable_aws_load_balancer_controller = false
   aws_load_balancer_controller = {
     set = [
       {
@@ -257,7 +257,7 @@ module "eks_blueprints_addons" {
   #---------------------------------------
   # Ingress Nginx Add-on
   #---------------------------------------
-  enable_ingress_nginx = true
+  enable_ingress_nginx = false
   ingress_nginx = {
     values = [templatefile("${path.module}/helm-values/ingress-nginx-values.yaml", {})]
   }
