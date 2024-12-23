@@ -7,7 +7,7 @@
 
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
-  version = "~> 5.0"
+  version = "~> 5.10"
 
   name = local.name
   cidr = local.vpc_cidr
@@ -42,4 +42,45 @@ module "vpc" {
   tags = merge(local.tags, {
     "karpenter.sh/discovery" = local.name
   })
+
+}
+
+module "vpc_endpoints" {
+  source  = "terraform-aws-modules/vpc/aws//modules/vpc-endpoints"
+  version = "~> 5.0"
+
+  create = true
+
+  vpc_id = module.vpc.vpc_id
+
+
+
+  endpoints = {
+    s3 = {
+      service         = "s3"
+      service_type    = "Gateway"
+      route_table_ids = module.vpc.private_route_table_ids
+      tags = {
+        Name = "${local.name}-s3"
+      }
+    }
+    ecr_api = {
+      service             = "ecr.api"
+      service_type        = "Interface"
+      subnet_ids          = [module.vpc.private_subnets[0]]
+      private_dns_enabled = true
+      tags = {
+        Name = "${local.name}-ecr-api"
+      }
+    }
+    ecr_dkr = {
+      service             = "ecr.dkr"
+      service_type        = "Interface"
+      subnet_ids          = [module.vpc.private_subnets[0]]
+      private_dns_enabled = true
+      tags = {
+        Name = "${local.name}-ecr-dkr"
+      }
+    }
+  }
 }

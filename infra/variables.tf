@@ -6,26 +6,26 @@ variable "region" {
 
 variable "name" {
   description = "Name of the VPC, EKS Cluster and Ray cluster"
-  default     = "ray-cluster"
+  default     = "kuberay-cluster"
   type        = string
 }
 
 variable "eks_cluster_version" {
   description = "EKS Cluster version"
-  default     = "1.29"
+  default     = "1.30"
   type        = string
 }
 
 variable "pyannote_auth_token" {
   description = "The PYANNOTE_AUTH_TOKEN used for Ray worker, and it's essentially a HuggingFace auth token"
-  type = string
-  sensitive = true
+  type        = string
+  sensitive   = true
 }
 
 variable "grafana_ingress_enabled" {
   description = "Enable Grafana Ingress or not"
-  type = bool
-  default = false
+  type        = bool
+  default     = false
 }
 
 variable "grafana_host" {
