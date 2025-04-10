@@ -1,0 +1,101 @@
+apiVersion: ray.io/v1
+kind: RayService
+metadata:
+  name: streaming-asr # Low Latency version of Streaming ASR
+  namespace: default
+spec:
+  deploymentUnhealthySecondThreshold: 300
+  rayClusterConfig:
+    enableInTreeAutoscaling: true
+    headGroupSpec:
+      rayStartParams:
+        dashboard-host: 0.0.0.0
+      template:
+        spec:
+          containers:
+          - env:
+            - name: RAY_GRAFANA_IFRAME_HOST
+              value: https://o11y.raycluster.lindarr.people.aws.dev
+            - name: RAY_GRAFANA_HOST
+              value: http://prometheus-grafana.prometheus-system.svc:80
+            - name: RAY_PROMETHEUS_HOST
+              value: http://prometheus-kube-prometheus-prometheus.prometheus-system.svc:9090
+            image: public.ecr.aws/darrenlin/whisper-streaming-v2
+            name: ray-head
+            ports:
+            - containerPort: 6379
+              name: gcs
+              protocol: TCP
+            - containerPort: 8265
+              name: dashboard
+              protocol: TCP
+            - containerPort: 10001
+              name: client
+              protocol: TCP
+            - containerPort: 8000
+              name: serve
+              protocol: TCP
+            resources:
+              limits:
+                cpu: "2"
+                memory: 8G
+              requests:
+                cpu: "2"
+                memory: 8G
+            securityContext:
+              capabilities:
+                add:
+                - SYS_PTRACE
+            volumeMounts:
+            - mountPath: /tmp/ray
+              name: ray-logs
+          volumes:
+          - emptyDir: {}
+            name: ray-logs
+    rayVersion: '2.22'
+    workerGroupSpecs:
+    - groupName: gpu-group
+      maxReplicas: 20
+      minReplicas: 1
+      rayStartParams: {}
+      template:
+        spec:
+          containers:
+          - image: public.ecr.aws/darrenlin/whisper-streaming-v2:latest
+            name: ray-worker
+            resources:
+              limits:
+                cpu: 4
+                memory: 16G
+                nvidia.com/gpu: 1
+              requests:
+                cpu: 3
+                memory: 12G
+                nvidia.com/gpu: 1
+          tolerations:
+          - effect: NoSchedule
+            key: ray.io/node-type
+            operator: Equal
+            value: worker
+  serveConfigV2: |
+    applications:
+      - name: streaming_asr
+        import_path: whisper_streaming_ray_serve:app
+        runtime_env:
+          working_dir: "https://github.com/lindarr915/whisper_streaming/archive/c681deb0612037ec2ae362b5a1a94817ccd6f05c.zip"
+        deployments:
+        - name: TranscriptionServer
+          max_ongoing_requests: 10
+          autoscaling_config:
+            target_ongoing_requests: 5
+            min_replicas: 1
+            max_replicas: 5
+            initial_replicas: 3
+        - name: FasterWhisperASR
+          max_concurrent_queries: 10
+          autoscaling_config:
+            target_ongoing_requests: 2
+            min_replicas: 1
+            max_replicas: 20
+            initial_replicas: 3
+  serviceUnhealthySecondThreshold: 900
